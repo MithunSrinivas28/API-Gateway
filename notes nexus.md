@@ -1,8 +1,6 @@
 # Nexus — Backend Engineering Mastery Notes
 
-> Personal interview preparation + systems engineering reference.
-> Built by Mithun Srinivas. Honest about current state. Deep on internals.
-
+> Complete notes of nexus made to learn backend 
 ---
 
 ## How to Use This Document
