@@ -33,6 +33,18 @@
 
 ---
 
+Every major e-commerce platform has the same failure story.
+Traffic spikes. 90% of requests hammer the same 20 cache keys.
+One key expires mid-spike and 12,000 requests hit the database simultaneously.
+The database falls over. The sale page goes blank.
+This is not a scaling problem. This is a cache intelligence problem.
+Standard Redis caching has no awareness of how hot a key is when it expires.
+It doesn't know that product:homepage is being hit 10,000 times per second.
+It expires it anyway. Every waiting request goes straight to the database.
+The database was never built to absorb that spike. It collapses.
+
+
+
 ### The Problem: Cache Stampede
 
 ```
@@ -68,7 +80,12 @@ This is a **cache stampede** (also called thundering herd). It's not a bug — i
 ### What Nexus Does Differently
 
 ```
-Nexus Cache Proxy sits between application and Redis:
+What Nexus Does
+Nexus is a TCP-based Redis proxy that sits transparently between your
+application and Redis — no code changes required. Any Redis client points
+at port 6380 instead of 6379. That's it.
+Behind that transparent interface, Nexus applies intelligence that standard
+Redis clients don't have:
 
   Application ──► port 6380 ──► [Nexus Proxy] ──► port 6379 ──► Redis
                                       │
