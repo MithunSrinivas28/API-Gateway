@@ -1,7 +1,7 @@
 // cache-proxy/index.js
 'use strict';
 
-const { createServer } = require('./server');
+const { createServer, createStatsServer } = require('./server');
 const redisClient = require('./redis-client');
 
 const PORT = process.env.PROXY_PORT || 6380;
@@ -19,6 +19,13 @@ async function start() {
   server.on('error', (err) => {
     console.error('[proxy] server error:', err.message);
     process.exit(1);
+  });
+
+  const statsServer = createStatsServer();
+  const STATS_PORT = process.env.STATS_PORT || 8080;
+
+  statsServer.listen(STATS_PORT, HOST, () => {
+    console.log(`[proxy] HTTP stats server listening on ${HOST}:${STATS_PORT}`);
   });
 }
 

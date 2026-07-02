@@ -8,6 +8,7 @@ class Singleflight {
 
   async do(key, fn) {
     if (this._inflight.has(key)) {
+      console.log(`SINGLEFLIGHT HIT: ${key}`);
       // Already in-flight — wait for the same promise
       return this._inflight.get(key);
     }

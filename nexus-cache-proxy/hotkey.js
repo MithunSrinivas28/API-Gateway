@@ -32,4 +32,11 @@ function getHitCount(key) {
   return hitCounts.get(key) || 0;
 }
 
-module.exports = { checkAndExtend, getHitCount };
+function getTopKeys(n = 10) {
+  return [...hitCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([key, hits]) => ({ key, hits }));
+}
+
+module.exports = { checkAndExtend, getHitCount, getTopKeys };

@@ -2,10 +2,19 @@
 'use strict';
 
 const net = require('net');
+const http = require('http');
 const { RespParser } = require('./resp/parser');
 const { serialize } = require('./resp/serializer');
 const redisClient = require('./redis-client');
+const singleflight = require('./singleflight');
+const { isAllowed } = require('../api-gateway/rateLimiter');
+const { checkAndExtend, getTopKeys } = require('./hotkey');
 
+const READ_COMMANDS = new Set([
+  'GET', 'HGET', 'LRANGE', 'MGET', 'ZREVRANGE', 
+  'ZRANGE', 'SMEMBERS', 'SISMEMBER', 'HGETALL', 
+  'STRLEN', 'ZCARD', 'SCARD', 'HLEN'
+]);
 function createServer() {
   const server = net.createServer((socket) => {
     const parser = new RespParser();
@@ -14,6 +23,13 @@ function createServer() {
 
     parser.on('command', async (parsed) => {
       try {
+        const ip = socket.remoteAddress;
+        if (!isAllowed(ip)) {
+          console.log(`RATE LIMITED: ${ip}`);
+          socket.write(serialize({ type: 'error', value: 'ERR rate limit exceeded' }));
+          return;
+        }
+
         // Commands arrive as RESP arrays e.g. ['SET', 'foo', 'bar']
         if (parsed.type !== 'array' || !parsed.value) {
           socket.write(serialize({ type: 'error', value: 'ERR invalid command format' }));
@@ -23,9 +39,21 @@ function createServer() {
         // Extract raw string args from bulk_string elements
         const args = parsed.value.map((el) => el.value);
         const [command, ...rest] = args;
+        const cmdUpper = command.toUpperCase();
+
+        // Track every command's key through hotkey module
+        if (rest.length > 0) {
+          checkAndExtend(rest[0]);
+        }
 
         // Forward to real Redis using ioredis call method
-        const result = await redisClient.call(command, ...rest);
+        let result;
+        if (READ_COMMANDS.has(cmdUpper)) {
+          const dedupKey = args.join(':');
+          result = await singleflight.do(dedupKey, () => redisClient.call(command, ...rest));
+        } else {
+          result = await redisClient.call(command, ...rest);
+        }
 
         // Build response based on what ioredis returned
         let response;
@@ -70,4 +98,19 @@ function createServer() {
   return server;
 }
 
-module.exports = { createServer };
+function createStatsServer() {
+  const statsServer = http.createServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/hotkeys') {
+      const top = getTopKeys(10);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(top, null, 2));
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not Found' }));
+    }
+  });
+
+  return statsServer;
+}
+
+module.exports = { createServer, createStatsServer };
